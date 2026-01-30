@@ -32,7 +32,7 @@ const Board = () => {
                 api.get(`/tickets?projectId=${projectId}`),
             ]);
             setProject(projectRes.data);
-            setTickets(ticketsRes.data);
+            setTickets(Array.isArray(ticketsRes.data) ? ticketsRes.data : []);
         } catch (error) {
             console.error('Error fetching data:', error);
             setToast({ message: 'Failed to load board data', type: 'error' });

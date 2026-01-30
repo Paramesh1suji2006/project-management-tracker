@@ -17,11 +17,11 @@ const LandingPage = () => {
                         </span>
                     </div>
                     <div className="flex gap-4">
-                        <Link to="/dashboard" className="btn-secondary">
-                            Go to Dashboard
+                        <Link to="/login" className="btn-secondary">
+                            Login
                         </Link>
-                        <Link to="/dashboard" className="btn-primary">
-                            Get Started
+                        <Link to="/register" className="btn-primary">
+                            Sign Up
                         </Link>
                     </div>
                 </nav>
@@ -39,8 +39,8 @@ const LandingPage = () => {
                         Collaborate, track progress, and deliver faster.
                     </p>
                     <div className="flex gap-4 justify-center animate-slide-up">
-                        <Link to="/dashboard" className="btn-primary text-lg px-8 py-3">
-                            Go to Dashboard
+                        <Link to="/register" className="btn-primary text-lg px-8 py-3">
+                            Get Started Free
                         </Link>
                         <a href="#features" className="btn-secondary text-lg px-8 py-3">
                             Learn More
@@ -113,8 +113,8 @@ const LandingPage = () => {
                     <p className="text-xl text-dark-300 mb-8">
                         Join thousands of teams already using ProjectFlow to deliver better projects.
                     </p>
-                    <Link to="/dashboard" className="btn-primary text-lg px-8 py-3">
-                        Go to Dashboard →
+                    <Link to="/register" className="btn-primary text-lg px-8 py-3">
+                        Get Started Now →
                     </Link>
                 </div>
             </div>

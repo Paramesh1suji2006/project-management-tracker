@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import DashboardLayout from '../components/Layout/DashboardLayout';
 import api from '../services/api';
 import Loader from '../components/UI/Loader';
+import Toast from '../components/UI/Toast';
 
 const Dashboard = () => {
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [toast, setToast] = useState(null);
 
     useEffect(() => {
         fetchStats();
@@ -15,25 +18,63 @@ const Dashboard = () => {
     const fetchStats = async () => {
         try {
             const [projectsRes, ticketsRes] = await Promise.all([
-                api.get('/projects'),
-                api.get('/tickets'),
+                api.get('/projects').catch(err => {
+                    console.error('Projects load specific error:', err);
+                    return { data: [] };
+                }),
+                api.get('/tickets').catch(err => {
+                    console.error('Tickets load specific error:', err);
+                    return { data: [] };
+                }),
             ]);
 
-            const projects = projectsRes.data;
-            const tickets = ticketsRes.data;
+            // Ensure data is always an array
+            const projects = Array.isArray(projectsRes.data) ? projectsRes.data : [];
+            const tickets = Array.isArray(ticketsRes.data) ? ticketsRes.data : [];
 
             setStats({
                 totalProjects: projects.length,
                 totalTickets: tickets.length,
-                todoTickets: tickets.filter(t => t.status === 'To Do').length,
-                inProgressTickets: tickets.filter(t => t.status === 'In Progress').length,
-                doneTickets: tickets.filter(t => t.status === 'Done').length,
+                todoTickets: tickets.filter(t => t?.status === 'To Do').length,
+                inProgressTickets: tickets.filter(t => t?.status === 'In Progress').length,
+                doneTickets: tickets.filter(t => t?.status === 'Done').length,
                 recentTickets: tickets.slice(0, 5),
             });
         } catch (error) {
             console.error('Error fetching stats:', error);
+            // Set default empty stats on error
+            setStats({
+                totalProjects: 0,
+                totalTickets: 0,
+                todoTickets: 0,
+                inProgressTickets: 0,
+                doneTickets: 0,
+                recentTickets: [],
+            });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDragEnd = async (result) => {
+        if (!result.destination) return;
+
+        const { draggableId, destination } = result;
+        const statusMap = {
+            'todo': 'To Do',
+            'in-progress': 'In Progress',
+            'done': 'Done',
+        };
+
+        const newStatus = statusMap[destination.droppableId];
+
+        try {
+            await api.put(`/tickets/${draggableId}/status`, { status: newStatus });
+            setToast({ message: 'Ticket status updated!', type: 'success' });
+            fetchStats(); // Refresh data
+        } catch (error) {
+            console.error('Error updating ticket:', error);
+            setToast({ message: 'Failed to update ticket status', type: 'error' });
         }
     };
 
@@ -51,8 +92,17 @@ const Dashboard = () => {
         High: 'bg-red-500',
     };
 
+    // Group tickets by status for drag and drop
+    const ticketsByStatus = {
+        'To Do': stats?.recentTickets?.filter(t => t.status === 'To Do') || [],
+        'In Progress': stats?.recentTickets?.filter(t => t.status === 'In Progress') || [],
+        'Done': stats?.recentTickets?.filter(t => t.status === 'Done') || [],
+    };
+
     return (
         <DashboardLayout>
+            {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+
             <div className="space-y-8">
                 <div>
                     <h1 className="text-4xl font-bold text-dark-50 mb-2">Dashboard</h1>
@@ -134,31 +184,145 @@ const Dashboard = () => {
                     </div>
                 </div>
 
-                {/* Recent Tickets */}
+                {/* Recent Tickets with Drag & Drop */}
                 <div className="card">
-                    <h2 className="text-2xl font-bold text-dark-50 mb-4">Recent Tickets</h2>
+                    <h2 className="text-2xl font-bold text-dark-50 mb-4">Recent Tickets (Drag to Change Status)</h2>
                     {stats?.recentTickets?.length > 0 ? (
-                        <div className="space-y-3">
-                            {stats.recentTickets.map((ticket) => (
-                                <div key={ticket._id} className="flex items-center justify-between p-4 bg-dark-700 rounded-lg hover:bg-dark-600 transition-all">
-                                    <div className="flex items-center gap-4 flex-1">
-                                        <div className={`w-2 h-12 ${priorityColors[ticket.priority]} rounded-full`}></div>
-                                        <div className="flex-1">
-                                            <h3 className="text-dark-50 font-medium">{ticket.title}</h3>
-                                            <p className="text-dark-400 text-sm">{ticket.projectId?.title || 'No Project'}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <span className="px-3 py-1 bg-dark-800 rounded text-dark-300 text-sm">
-                                            {ticket.status}
-                                        </span>
-                                        <span className={`px-3 py-1 ${priorityColors[ticket.priority]} text-white rounded text-sm`}>
-                                            {ticket.priority}
-                                        </span>
-                                    </div>
+                        <DragDropContext onDragEnd={handleDragEnd}>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {/* To Do Column */}
+                                <div>
+                                    <h3 className="text-lg font-semibold text-blue-400 mb-3">To Do</h3>
+                                    <Droppable droppableId="todo">
+                                        {(provided, snapshot) => (
+                                            <div
+                                                ref={provided.innerRef}
+                                                {...provided.droppableProps}
+                                                className={`space-y-2 min-h-[100px] p-2 rounded-lg ${snapshot.isDraggingOver ? 'bg-blue-900/20' : 'bg-dark-800/50'
+                                                    }`}
+                                            >
+                                                {ticketsByStatus['To Do'].map((ticket, index) => (
+                                                    <Draggable key={ticket._id} draggableId={ticket._id} index={index}>
+                                                        {(provided, snapshot) => (
+                                                            <div
+                                                                ref={provided.innerRef}
+                                                                {...provided.draggableProps}
+                                                                {...provided.dragHandleProps}
+                                                                className={`p-3 bg-dark-700 rounded-lg hover:bg-dark-600 transition-all cursor-move ${snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-500' : ''
+                                                                    }`}
+                                                            >
+                                                                <div className="flex items-start gap-2">
+                                                                    <div className={`w-1 h-full ${priorityColors[ticket.priority]} rounded-full`}></div>
+                                                                    <div className="flex-1">
+                                                                        <h4 className="text-dark-50 font-medium text-sm">{ticket.title}</h4>
+                                                                        <p className="text-dark-400 text-xs mt-1">{ticket.projectId?.title || 'No Project'}</p>
+                                                                        <span className={`inline-block mt-2 px-2 py-1 ${priorityColors[ticket.priority]} text-white rounded text-xs`}>
+                                                                            {ticket.priority}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </Draggable>
+                                                ))}
+                                                {provided.placeholder}
+                                                {ticketsByStatus['To Do'].length === 0 && (
+                                                    <p className="text-dark-500 text-sm text-center py-4">No tickets</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </Droppable>
                                 </div>
-                            ))}
-                        </div>
+
+                                {/* In Progress Column */}
+                                <div>
+                                    <h3 className="text-lg font-semibold text-yellow-400 mb-3">In Progress</h3>
+                                    <Droppable droppableId="in-progress">
+                                        {(provided, snapshot) => (
+                                            <div
+                                                ref={provided.innerRef}
+                                                {...provided.droppableProps}
+                                                className={`space-y-2 min-h-[100px] p-2 rounded-lg ${snapshot.isDraggingOver ? 'bg-yellow-900/20' : 'bg-dark-800/50'
+                                                    }`}
+                                            >
+                                                {ticketsByStatus['In Progress'].map((ticket, index) => (
+                                                    <Draggable key={ticket._id} draggableId={ticket._id} index={index}>
+                                                        {(provided, snapshot) => (
+                                                            <div
+                                                                ref={provided.innerRef}
+                                                                {...provided.draggableProps}
+                                                                {...provided.dragHandleProps}
+                                                                className={`p-3 bg-dark-700 rounded-lg hover:bg-dark-600 transition-all cursor-move ${snapshot.isDragging ? 'shadow-lg ring-2 ring-yellow-500' : ''
+                                                                    }`}
+                                                            >
+                                                                <div className="flex items-start gap-2">
+                                                                    <div className={`w-1 h-full ${priorityColors[ticket.priority]} rounded-full`}></div>
+                                                                    <div className="flex-1">
+                                                                        <h4 className="text-dark-50 font-medium text-sm">{ticket.title}</h4>
+                                                                        <p className="text-dark-400 text-xs mt-1">{ticket.projectId?.title || 'No Project'}</p>
+                                                                        <span className={`inline-block mt-2 px-2 py-1 ${priorityColors[ticket.priority]} text-white rounded text-xs`}>
+                                                                            {ticket.priority}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </Draggable>
+                                                ))}
+                                                {provided.placeholder}
+                                                {ticketsByStatus['In Progress'].length === 0 && (
+                                                    <p className="text-dark-500 text-sm text-center py-4">No tickets</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </Droppable>
+                                </div>
+
+                                {/* Done Column */}
+                                <div>
+                                    <h3 className="text-lg font-semibold text-green-400 mb-3">Done</h3>
+                                    <Droppable droppableId="done">
+                                        {(provided, snapshot) => (
+                                            <div
+                                                ref={provided.innerRef}
+                                                {...provided.droppableProps}
+                                                className={`space-y-2 min-h-[100px] p-2 rounded-lg ${snapshot.isDraggingOver ? 'bg-green-900/20' : 'bg-dark-800/50'
+                                                    }`}
+                                            >
+                                                {ticketsByStatus['Done'].map((ticket, index) => (
+                                                    <Draggable key={ticket._id} draggableId={ticket._id} index={index}>
+                                                        {(provided, snapshot) => (
+                                                            <div
+                                                                ref={provided.innerRef}
+                                                                {...provided.draggableProps}
+                                                                {...provided.dragHandleProps}
+                                                                className={`p-3 bg-dark-700 rounded-lg hover:bg-dark-600 transition-all cursor-move ${snapshot.isDragging ? 'shadow-lg ring-2 ring-green-500' : ''
+                                                                    }`}
+                                                            >
+                                                                <div className="flex items-start gap-2">
+                                                                    <div className={`w-1 h-full ${priorityColors[ticket.priority]} rounded-full`}></div>
+                                                                    <div className="flex-1">
+                                                                        <h4 className="text-dark-50 font-medium text-sm">{ticket.title}</h4>
+                                                                        <p className="text-dark-400 text-xs mt-1">{ticket.projectId?.title || 'No Project'}</p>
+                                                                        <span className={`inline-block mt-2 px-2 py-1 ${priorityColors[ticket.priority]} text-white rounded text-xs`}>
+                                                                            {ticket.priority}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </Draggable>
+                                                ))}
+                                                {provided.placeholder}
+                                                {ticketsByStatus['Done'].length === 0 && (
+                                                    <p className="text-dark-500 text-sm text-center py-4">No tickets</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </Droppable>
+                                </div>
+                            </div>
+                        </DragDropContext>
                     ) : (
                         <p className="text-dark-400 text-center py-8">No tickets yet. Create your first ticket!</p>
                     )}

@@ -14,7 +14,6 @@ const CreateTicket = () => {
 
     const [formData, setFormData] = useState({
         projectId: '',
-        projectName: '',
         title: '',
         description: '',
         type: 'Task',
@@ -51,26 +50,10 @@ const CreateTicket = () => {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
+        setFormData({ ...formData, [name]: value });
 
-        if (name === 'projectName') {
-            // Find the project by title
-            const matchedProject = projects.find(p => p.title === value);
-            if (matchedProject) {
-                setFormData({
-                    ...formData,
-                    projectName: value,
-                    projectId: matchedProject._id
-                });
-                fetchProjectUsers(matchedProject._id);
-            } else {
-                setFormData({ ...formData, projectName: value, projectId: '' });
-            }
-        } else {
-            setFormData({ ...formData, [name]: value });
-
-            if (name === 'projectId' && value) {
-                fetchProjectUsers(value);
-            }
+        if (name === 'projectId' && value) {
+            fetchProjectUsers(value);
         }
     };
 
@@ -131,26 +114,30 @@ const CreateTicket = () => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="card space-y-6">
-                    {/* Project Input with Autocomplete */}
+                    {/* Project Selection */}
                     <div>
                         <label className="block text-dark-300 mb-2 font-medium">
-                            Project Name <span className="text-red-500">*</span>
+                            Project <span className="text-red-500">*</span>
                         </label>
-                        <input
-                            type="text"
-                            name="projectName"
-                            value={formData.projectName}
+                        <select
+                            name="projectId"
+                            value={formData.projectId}
                             onChange={handleChange}
                             className="input"
-                            placeholder="Enter or select project name"
-                            list="projects-list"
                             required
-                        />
-                        <datalist id="projects-list">
+                        >
+                            <option value="">Select a project...</option>
                             {projects.map((project) => (
-                                <option key={project._id} value={project.title} data-id={project._id} />
+                                <option key={project._id} value={project._id}>
+                                    {project.title} ({project.key})
+                                </option>
                             ))}
-                        </datalist>
+                        </select>
+                        {projects.length === 0 && (
+                            <p className="text-dark-400 text-sm mt-2">
+                                No projects available. Please create a project first.
+                            </p>
+                        )}
                     </div>
 
                     {/* Title */}
